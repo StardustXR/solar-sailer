@@ -1,5 +1,5 @@
 [package]
-name = "client-template"
+name = "solar-sailer"
 version = "0.1.0"
 edition = "2021"
 
@@ -19,5 +19,5 @@ branch = "dev"
 git = "https://github.com/StardustXR/molecules.git"
 branch = "dev"
 
-[dependencies.libmonado-rs]
+[dependencies.libmonado]
 git = "https://github.com/technobaboo/libmonado-rs.git"

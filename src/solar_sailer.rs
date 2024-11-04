@@ -1,17 +1,18 @@
 use glam::{Affine3A, Quat, Vec3};
-use libmonado_rs::{Monado, Pose};
+use libmonado::{Monado, Pose};
 use send_wrapper::SendWrapper;
 use stardust_xr_fusion::{
-	client::Client,
 	drawable::{Line, LinePoint, Lines},
 	fields::{CylinderShape, Field, Shape},
 	input::{InputDataType, InputHandler},
 	node::{MethodResult, NodeResult},
-	root::{ClientState, FrameInfo, RootHandler},
+	root::{ClientState, FrameInfo},
 	spatial::{Spatial, SpatialAspect, Transform},
 	values::color::rgba_linear,
+	ClientHandle,
 };
 use stardust_xr_molecules::input_action::{InputQueue, InputQueueable, SimpleAction, SingleAction};
+use std::sync::Arc;
 
 pub struct SolarSailer {
 	monado: SendWrapper<Monado>,
@@ -26,7 +27,11 @@ pub struct SolarSailer {
 	_visuals: Lines,
 }
 impl SolarSailer {
-	pub fn new(monado: Monado, stardust_client: &Client, thickness: f32) -> NodeResult<Self> {
+	pub fn new(
+		monado: Monado,
+		stardust_client: Arc<ClientHandle>,
+		thickness: f32,
+	) -> NodeResult<Self> {
 		let visual_length = 0.075;
 		let pen_root = Spatial::create(stardust_client.get_root(), Transform::none(), true)?;
 		let field = Field::create(
@@ -85,10 +90,12 @@ impl SolarSailer {
 			_visuals: visuals,
 		})
 	}
-}
-impl RootHandler for SolarSailer {
-	fn frame(&mut self, info: FrameInfo) {
+
+	pub fn frame(&mut self, info: FrameInfo) {
 		self.velocity *= 0.99;
+		if !self.input.handle_events() {
+			return;
+		}
 
 		let origins = self
 			.monado
@@ -195,7 +202,7 @@ impl RootHandler for SolarSailer {
 		self.previous_position = real_position;
 	}
 
-	fn save_state(&mut self) -> MethodResult<ClientState> {
+	pub fn save_state(&mut self) -> MethodResult<ClientState> {
 		ClientState::from_root(&self.pen_root)
 	}
 }
