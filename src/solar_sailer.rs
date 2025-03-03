@@ -118,7 +118,7 @@ impl SolarSailer {
 			// dbg!(monado_offset_position);
 			let delta_position = self.velocity * info.delta;
 			let offset_position =
-				real_to_offset_matrix.transform_vector3(delta_position) + Vec3::from(position);
+				real_to_offset_matrix.transform_point3(delta_position);
 			// offset_position.y = offset_position.y.max(0.0);
 			// dbg!(offset_position);
 
@@ -185,7 +185,7 @@ impl SolarSailer {
 			InputDataType::Tip(t) => t.origin,
 			_ => unreachable!(),
 		});
-		let real_position = real_to_offset_matrix.inverse().transform_point3(position);
+		let real_position = real_to_offset_matrix.transform_point3(position);
 		// let real_position = position;
 		// dbg!(real_position);
 
@@ -194,6 +194,8 @@ impl SolarSailer {
 		}
 		if self.glide_action.currently_acting().contains(grab_actor) {
 			let offset = self.previous_position - real_position;
+			// idk why this is needed
+			let offset = Vec3::new(-offset.x, offset.y, -offset.z);
 			// dbg!(offset);
 			let offset_magnify = (offset.length()).powf(0.9);
 			// dbg!(offset_magnify);
