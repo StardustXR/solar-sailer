@@ -10,6 +10,7 @@ manifest-dir-macros = "0.1.18"
 mint = "0.5.9"
 send_wrapper = "0.6.0"
 tokio = { version = "1.32.0", features = ["rt", "tokio-macros", "sync"] }
+tokio-stream = "0.1.17"
 
 [dependencies.stardust-xr-fusion]
 git = "https://github.com/StardustXR/core.git"

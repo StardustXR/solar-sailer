@@ -1,210 +1,115 @@
-use glam::{Affine3A, Quat, Vec3};
-use libmonado::{Monado, Pose};
-use send_wrapper::SendWrapper;
+use std::f32::consts::FRAC_PI_2;
+
+use glam::{vec3, Affine3A, Mat4, Quat, Vec3};
 use stardust_xr_fusion::{
-	drawable::{Line, LinePoint, Lines},
-	fields::{CylinderShape, Field, Shape},
-	input::{InputDataType, InputHandler},
-	node::{MethodResult, NodeResult},
-	root::{ClientState, FrameInfo},
-	spatial::{Spatial, SpatialAspect, Transform},
-	values::color::rgba_linear,
-	ClientHandle,
+	drawable::{Line, Lines, LinesAspect as _},
+	input::{InputData, InputDataType},
+	spatial::{SpatialRef, Transform},
+	values::color::{color_space::LinearRgb, rgba_linear, Rgba},
 };
-use stardust_xr_molecules::input_action::{InputQueue, InputQueueable, SimpleAction, SingleAction};
-use std::sync::Arc;
+use stardust_xr_molecules::lines::{circle, LineExt};
+
+use crate::{input::Input, monado_movement::MonadoMovement, zone_movement::ZoneMovement};
 
 pub struct SolarSailer {
-	monado: SendWrapper<Monado>,
-	velocity: Vec3,
-	previous_position: Vec3,
-
-	pen_root: Spatial,
-	_field: Field,
-	input: InputQueue,
-	grab_action: SingleAction,
-	glide_action: SimpleAction,
-	_visuals: Lines,
+	pub monado_movement: Option<MonadoMovement>,
+	pub signifiers: Lines,
+	pub mode: Mode,
+	pub input: Input,
+	pub grab_color: Rgba<f32, LinearRgb>,
+	pub zone_movement: ZoneMovement,
+	pub hmd: SpatialRef,
 }
+
 impl SolarSailer {
-	pub fn new(
-		monado: Monado,
-		stardust_client: Arc<ClientHandle>,
-		thickness: f32,
-	) -> NodeResult<Self> {
-		let visual_length = 0.075;
-		let pen_root = Spatial::create(stardust_client.get_root(), Transform::none(), true)?;
-		let field = Field::create(
-			&pen_root,
-			Transform::from_translation([0.0, 0.0, visual_length * 0.5]),
-			Shape::Cylinder(CylinderShape {
-				length: visual_length,
-				radius: thickness * 0.5,
-			}),
-		)?;
-		let input =
-			InputHandler::create(stardust_client.get_root(), Transform::none(), &field)?.queue()?;
-
-		let color = rgba_linear!(1.0, 1.0, 0.0, 1.0);
-		let visuals = Lines::create(
-			&pen_root,
-			Transform::none(),
-			&[Line {
-				points: vec![
-					LinePoint {
-						point: [0.0; 3].into(),
-						thickness: 0.0,
-						color,
-					},
-					LinePoint {
-						point: [0.0, 0.0, thickness].into(),
-						thickness,
-						color,
-					},
-					LinePoint {
-						point: [0.0, 0.0, visual_length].into(),
-						thickness,
-						color,
-					},
-				],
-				cyclic: false,
-			}],
-		)?;
-
-		for origin in monado.tracking_origins().unwrap().into_iter() {
-			let _ = origin.set_offset(Pose {
-				position: Vec3::ZERO.into(),
-				orientation: Quat::IDENTITY.into(),
-			});
-		}
-		Ok(Self {
-			monado: SendWrapper::new(monado),
-			velocity: Default::default(),
-			previous_position: Default::default(),
-
-			pen_root,
-			_field: field,
-			input,
-			grab_action: Default::default(),
-			glide_action: Default::default(),
-			_visuals: visuals,
-		})
+	pub fn handle_events(&mut self) {
+		self.zone_movement.update_zone();
 	}
 
-	pub fn frame(&mut self, info: FrameInfo) {
-		self.velocity *= 0.99;
-		if !self.input.handle_events() {
-			return;
+	pub fn handle_input(&mut self) {
+		self.input.handle_input();
+	}
+	pub async fn apply_offset(&mut self, delta_secs: f32) {
+		match (&self.mode, self.monado_movement.as_mut()) {
+			(Mode::MonadoOffset, Some(monado)) => monado.apply_offset(delta_secs, &self.hmd).await,
+			(Mode::Zone, _) => self.zone_movement.apply_offset(delta_secs, &self.hmd).await,
+			_ => {}
 		}
+	}
 
-		let origins = self
-			.monado
-			.tracking_origins()
-			.unwrap()
-			.into_iter()
-			.collect::<Vec<_>>();
-
-		let Some(Pose {
-			position,
-			orientation,
-		}) = origins.first().and_then(|o| o.get_offset().ok())
-		else {
-			return;
-		};
-		let real_to_offset_matrix =
-			Affine3A::from_rotation_translation(orientation.into(), position.into());
-		// dbg!(self.velocity.length() * info.delta);
-		if self.velocity.length_squared() > 0.001 {
-			// dbg!(monado_offset_position);
-			let delta_position = self.velocity * info.delta;
-			let offset_position =
-				real_to_offset_matrix.transform_point3(delta_position);
-			// offset_position.y = offset_position.y.max(0.0);
-			// dbg!(offset_position);
-
-			for origin in origins.iter() {
-				let _ = origin.set_offset(Pose {
-					position: offset_position.into(),
-					orientation,
-				});
+	pub fn update_velocity(&mut self, delta_secs: f32) {
+		let offset = self.input.waft(delta_secs);
+		match self.mode {
+			Mode::Zone => {
+				self.zone_movement.velocity *= 0.99;
+				self.zone_movement.velocity += offset
 			}
-		}
-
-		// for origin in origins.iter() {
-		// 	let _ = origin.set_offset(Pose {
-		// 		position: [0.0, info.elapsed.sin(), 0.0].into(),
-		// 		orientation,
-		// 	});
-		// }
-
-		self.grab_action.update(
-			false,
-			&self.input,
-			|data| data.distance < 0.05,
-			|data| {
-				data.datamap.with_data(|datamap| match &data.input {
-					InputDataType::Hand(_) => datamap.idx("grab_strength").as_f32() > 0.90,
-					InputDataType::Tip(_) => datamap.idx("grab").as_f32() > 0.90,
-					_ => false,
-				})
-			},
-		);
-		self.glide_action.update(&self.input, &|data| {
-			data.datamap.with_data(|datamap| match &data.input {
-				InputDataType::Hand(h) => {
-					Vec3::from(h.thumb.tip.position).distance(h.index.tip.position.into()) < 0.03
+			Mode::MonadoOffset => {
+				if let Some(monado_movement) = self.monado_movement.as_mut() {
+					monado_movement.velocity *= 0.99;
+					monado_movement.velocity += offset;
 				}
-				InputDataType::Tip(_) => datamap.idx("select").as_f32() > 0.01,
-				_ => false,
-			})
-		});
-
-		if self.grab_action.actor_started() {
-			let _ = self.pen_root.set_zoneable(false);
+			}
+			Mode::Disabled => {}
 		}
-		if self.grab_action.actor_stopped() {
-			let _ = self.pen_root.set_zoneable(true);
-		}
-		let Some(grab_actor) = self.grab_action.actor() else {
-			return;
-		};
-		let transform = match &grab_actor.input {
-			InputDataType::Hand(h) => Transform::from_translation_rotation(
-				(Vec3::from(h.thumb.tip.position) + Vec3::from(h.index.tip.position)) * 0.5,
-				h.palm.rotation,
-			),
-			InputDataType::Tip(t) => Transform::from_translation_rotation(t.origin, t.orientation),
-			_ => Transform::none(),
-		};
-		let _ = self
-			.pen_root
-			.set_relative_transform(self.input.handler(), transform);
-
-		let position = Vec3::from(match &grab_actor.input {
-			InputDataType::Hand(h) => h.palm.position,
-			InputDataType::Tip(t) => t.origin,
-			_ => unreachable!(),
-		});
-		let real_position = real_to_offset_matrix.transform_point3(position);
-		// let real_position = position;
-		// dbg!(real_position);
-
-		if self.glide_action.started_acting().contains(grab_actor) {
-			self.previous_position = real_position;
-		}
-		if self.glide_action.currently_acting().contains(grab_actor) {
-			let offset = self.previous_position - real_position;
-			// idk why this is needed
-			let offset = Vec3::new(-offset.x, offset.y, -offset.z);
-			// dbg!(offset);
-			let offset_magnify = (offset.length()).powf(0.9);
-			// dbg!(offset_magnify);
-			self.velocity += offset.normalize_or_zero() * offset_magnify;
-		}
-		self.previous_position = real_position;
 	}
+	pub fn update_signifiers(&self) {
+		if matches!(self.mode, Mode::Disabled) {
+			self.signifiers.set_lines(&[]).unwrap();
+			return;
+		}
+		let signifier_lines = self
+			.input
+			.update_signifiers(|input, grabbing| self.generate_signifier(input, grabbing));
+		self.signifiers.set_lines(&signifier_lines).unwrap();
+	}
+	fn generate_signifier(&self, input: &InputData, grabbing: bool) -> Line {
+		let transform = match &input.input {
+			InputDataType::Pointer(_) => panic!("awawawawawawa"),
+			InputDataType::Hand(h) => {
+				Mat4::from_rotation_translation(h.palm.rotation.into(), h.palm.position.into())
+					* Mat4::from_translation(vec3(0.0, 0.05, -0.02))
+					* Mat4::from_rotation_x(FRAC_PI_2)
+			}
+			InputDataType::Tip(t) => {
+				Mat4::from_rotation_translation(t.orientation.into(), t.origin.into())
+			}
+		};
 
-	pub fn save_state(&mut self) -> MethodResult<ClientState> {
-		ClientState::from_root(&self.pen_root)
+		let line = circle(
+			64,
+			0.0,
+			match &input.input {
+				InputDataType::Pointer(_) => panic!("awawawawawawa"),
+				InputDataType::Hand(_) => 0.1,
+				InputDataType::Tip(_) => 0.0025,
+			},
+		)
+		.transform(transform);
+		if grabbing {
+			line.color(self.grab_color)
+		} else if matches!(self.mode, Mode::MonadoOffset) {
+			line.color(rgba_linear!(1.0, 1.0, 0.0, 1.0))
+		} else {
+			line
+		}
 	}
 }
+
+#[derive(Debug)]
+pub enum Mode {
+	Zone,
+	MonadoOffset,
+	Disabled,
+}
+
+pub fn mat_from_transform(transform: &Transform) -> Affine3A {
+	Affine3A::from_scale_rotation_translation(
+		transform.scale.map(Vec3::from).unwrap_or(Vec3::ONE),
+		transform.rotation.map(Quat::from).unwrap_or(Quat::IDENTITY),
+		transform.translation.map(Vec3::from).unwrap_or(Vec3::ZERO),
+	)
+}
+
+
+ 
