@@ -11,10 +11,14 @@ mint = "0.5.9"
 send_wrapper = "0.6.0"
 tokio = { version = "1.32.0", features = ["rt", "tokio-macros", "sync"] }
 tokio-stream = "0.1.17"
+tracing-subscriber = { version = "0.3.19", features = ["tracing"] }
 
 [dependencies.stardust-xr-fusion]
 git = "https://github.com/StardustXR/core.git"
 branch = "dev"
+
+[patch."https://github.com/StardustXR/core.git"]
+stardust-xr-fusion.path = "../core/fusion"
 
 [dependencies.stardust-xr-molecules]
 git = "https://github.com/StardustXR/molecules.git"

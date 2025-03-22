@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use glam::Vec3;
 use stardust_xr_fusion::{
-	fields::{Field, Shape},
+	fields::{CylinderShape, Field, Shape},
 	node::{NodeResult, NodeType},
 	spatial::{
 		Spatial, SpatialAspect, SpatialRef, SpatialRefAspect, Transform, Zone, ZoneAspect,
@@ -57,7 +57,7 @@ impl ZoneMovement {
 	pub fn new(client: &Arc<ClientHandle>) -> NodeResult<Self> {
 		let zone_spatial = Spatial::create(client.get_root(), Transform::identity(), false)?;
 		let zone_field =
-			Field::create(&zone_spatial, Transform::identity(), Shape::Sphere(1000.0))?;
+			Field::create(&zone_spatial, Transform::identity(), Shape::Sphere(1000.0) /* Shape::Cylinder(CylinderShape{ length: 1000.0, radius: 1000.0 }) */)?;
 		let zone = Zone::create(&zone_spatial, Transform::identity(), &zone_field)?;
 		Ok(ZoneMovement {
 			velocity: Vec3::ZERO,

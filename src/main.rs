@@ -23,6 +23,7 @@ use zone_movement::ZoneMovement;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+	tracing_subscriber::fmt().pretty().finish();
 	color_eyre::install().unwrap();
 	let client = Client::connect().await.unwrap();
 	let client_handle = client.handle();
@@ -46,13 +47,12 @@ async fn main() {
 	let mut button_hand: Option<ModeButton> = None;
 	let mut button_controller: Option<ModeButton> = None;
 
-	let input = Input::new(&client).await.unwrap();
+	let input = Input::new_grab(&client).await.unwrap();
 
 	let hmd = hmd(&client).await.unwrap();
 
 	let mut solar_sailer = SolarSailer {
 		monado_movement: MonadoMovement::from_monado(&client, monado).await,
-		signifiers: Lines::create(input.queue.handler(), Transform::identity(), &[]).unwrap(),
 		mode: Mode::MonadoOffset,
 		grab_color: rgba_linear!(0.0, 0.549, 1.0, 1.0),
 		input,
