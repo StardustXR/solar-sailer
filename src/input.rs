@@ -169,7 +169,7 @@ impl PenInput {
 			|data| data.distance < 0.05,
 			|data| {
 				data.datamap.with_data(|datamap| match &data.input {
-					InputDataType::Hand(_) => datamap.idx("grab_strength").as_f32() > 0.90,
+					InputDataType::Hand(_) => datamap.idx("grab_strength").as_f32() > 0.80,
 					InputDataType::Tip(_) => datamap.idx("grab").as_f32() > 0.90,
 					_ => false,
 				})
