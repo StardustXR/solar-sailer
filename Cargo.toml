@@ -1,7 +1,7 @@
 [package]
 name = "solar-sailer"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 color-eyre = "0.6.2"
@@ -10,6 +10,8 @@ manifest-dir-macros = "0.1.18"
 mint = "0.5.9"
 send_wrapper = "0.6.0"
 tokio = { version = "1.32.0", features = ["rt", "tokio-macros", "sync"] }
+tokio-stream = "0.1.17"
+tracing-subscriber = { version = "0.3.19", features = ["tracing"] }
 
 [dependencies.stardust-xr-fusion]
 git = "https://github.com/StardustXR/core.git"
