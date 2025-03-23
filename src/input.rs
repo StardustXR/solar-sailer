@@ -1,37 +1,59 @@
 use std::{f32::consts::FRAC_PI_2, sync::Arc};
 
-use glam::{vec3, Mat4, Vec3};
+use glam::{Mat4, Quat, Vec3, vec3};
 use stardust_xr_fusion::{
-	drawable::{Line, Lines, LinesAspect as _},
+	ClientHandle,
+	drawable::{Line, LinePoint, Lines, LinesAspect as _, Model},
 	fields::{CylinderShape, Field, Shape},
 	input::{InputData, InputDataType, InputHandler},
 	node::NodeResult,
 	objects::hmd,
-	spatial::Transform,
-	values::color::rgba_linear,
-	ClientHandle,
+	spatial::{Spatial, SpatialAspect as _, SpatialRef, SpatialRefAspect, Transform},
+	values::{ResourceID, color::rgba_linear},
 };
 use stardust_xr_molecules::{
-	input_action::{InputQueue, InputQueueable as _, SingleAction},
-	lines::{circle, LineExt as _},
+	UIElement,
+	button::{Button, ButtonSettings},
+	input_action::{InputQueue, InputQueueable as _, SimpleAction, SingleAction},
+	lines::{LineExt as _, circle},
 };
 
-use crate::solar_sailer::Mode;
+use crate::{
+	mode_button::ModeButton,
+	solar_sailer::{Mode, mat_from_transform},
+};
 
-pub struct PenInput {}
+pub struct PenInput {
+	move_action: SimpleAction,
+	grab_action: SingleAction,
+	_field: Field,
+	pen_root: Spatial,
+	queue: InputQueue,
+	prev_position: Option<Vec3>,
+	signifiers: Lines,
+	client: Arc<ClientHandle>,
+	button: Button,
+	_button_model: Model,
+}
 pub enum Input {
 	Grab(GrabInput),
 	Pen(PenInput),
 }
 pub struct GrabInput {
-	pub move_action: SingleAction,
-	pub _field: Field,
-	pub queue: InputQueue,
-	pub prev_position: Option<Vec3>,
-	pub signifiers: Lines,
+	move_action: SingleAction,
+	_field: Field,
+	queue: InputQueue,
+	prev_position: Option<Vec3>,
+	signifiers: Lines,
+	client: Arc<ClientHandle>,
+	button_hand: Option<ModeButton>,
+	button_controller: Option<ModeButton>,
 }
 
 impl Input {
+	pub async fn new_pen(client: &Arc<ClientHandle>) -> NodeResult<Self> {
+		PenInput::new(client).await.map(Input::Pen)
+	}
 	pub async fn new_grab(client: &Arc<ClientHandle>) -> NodeResult<Self> {
 		let field = Field::create(
 			&hmd(client).await.unwrap(),
@@ -49,30 +71,213 @@ impl Input {
 			_field: field,
 			queue,
 			prev_position: None,
+			client: client.clone(),
+			button_hand: None,
+			button_controller: None,
 		}))
 	}
 }
 impl Input {
+	pub fn update_mode(&mut self) -> bool {
+		match self {
+			Input::Grab(grab_input) => grab_input.update_mode(),
+			Input::Pen(pen_input) => pen_input.update_mode(),
+		}
+	}
 	pub fn handle_input(&mut self) {
 		match self {
 			Input::Grab(grab_input) => grab_input.handle_input(),
-			Input::Pen(pen_input) => todo!(),
+			Input::Pen(pen_input) => pen_input.handle_input(),
 		}
 	}
-	pub fn waft(&mut self, delta_secs: f32) -> Vec3 {
+	pub async fn waft(&mut self, delta_secs: f32) -> Vec3 {
 		match self {
-			Input::Grab(grab_input) => grab_input.waft(delta_secs),
-			Input::Pen(pen_input) => todo!(),
+			Input::Grab(grab_input) => grab_input.waft(delta_secs).await,
+			Input::Pen(pen_input) => pen_input.waft(delta_secs).await,
 		}
 	}
 	pub fn update_signifiers(&self, mode: Mode) {
 		match self {
 			Input::Grab(grab_input) => grab_input.update_signifiers(mode),
-			Input::Pen(pen_input) => todo!(),
+			Input::Pen(pen_input) => pen_input.update_signifiers(mode),
+		}
+	}
+	pub fn get_velocity_space(&self) -> SpatialRef {
+		match self {
+			Input::Grab(grab_input) => grab_input.client.get_root().clone().as_spatial_ref(),
+			Input::Pen(pen_input) => pen_input.client.get_root().clone().as_spatial_ref(),
 		}
 	}
 }
+impl PenInput {
+	const LENGTH: f32 = 0.075;
+	const THICKNESS: f32 = 0.005;
+	fn update_mode(&mut self) -> bool {
+		if !self.button.handle_events() {
+			return false;
+		}
+		self.button.released()
+	}
+	async fn new(client: &Arc<ClientHandle>) -> NodeResult<Self> {
+		let pen_root = Spatial::create(client.get_root(), Transform::none(), true)?;
+		let signifiers = Lines::create(&pen_root, Transform::none(), &[])?;
+		let field = Field::create(
+			&pen_root,
+			Transform::from_translation([0.0, Self::LENGTH * 0.5, 0.0]),
+			Shape::Cylinder(CylinderShape {
+				length: Self::LENGTH,
+				radius: Self::THICKNESS * 0.5,
+			}),
+		)?;
+		let queue = InputHandler::create(client.get_root(), Transform::none(), &field)?.queue()?;
+
+		let button = Button::create(
+			&pen_root,
+			Transform::from_translation_rotation(
+				[0.0, Self::LENGTH * 1.1, 0.0],
+				Quat::from_rotation_x(-FRAC_PI_2),
+			),
+			[0.02; 2],
+			ButtonSettings::default(),
+		)?;
+		let button_model = Model::create(
+			button.touch_plane().root(),
+			Transform::identity(),
+			&ResourceID::new_namespaced("solar_sailer", "move_icon"),
+		)?;
+
+		Ok(Self {
+			move_action: Default::default(),
+			grab_action: Default::default(),
+			_field: field,
+			pen_root,
+			queue,
+			prev_position: None,
+			signifiers,
+			client: client.clone(),
+			button,
+			_button_model: button_model,
+		})
+	}
+	fn handle_input(&mut self) {
+		if !self.queue.handle_events() {
+			return;
+		}
+		self.grab_action.update(
+			false,
+			&self.queue,
+			|data| data.distance < 0.05,
+			|data| {
+				data.datamap.with_data(|datamap| match &data.input {
+					InputDataType::Hand(_) => datamap.idx("grab_strength").as_f32() > 0.90,
+					InputDataType::Tip(_) => datamap.idx("grab").as_f32() > 0.90,
+					_ => false,
+				})
+			},
+		);
+		self.move_action.update(&self.queue, &|data| {
+			data.datamap.with_data(|datamap| match &data.input {
+				InputDataType::Hand(h) => {
+					Vec3::from(h.thumb.tip.position).distance(h.index.tip.position.into()) < 0.03
+				}
+				InputDataType::Tip(_) => datamap.idx("select").as_f32() > 0.01,
+				_ => false,
+			})
+		});
+
+		if self.grab_action.actor_started() {
+			let _ = self.pen_root.set_zoneable(false);
+		}
+		if self.grab_action.actor_stopped() {
+			let _ = self.pen_root.set_zoneable(true);
+		}
+		let Some(grab_actor) = self.grab_action.actor() else {
+			return;
+		};
+		let transform = match &grab_actor.input {
+			InputDataType::Hand(h) => Transform::from_translation_rotation(
+				(Vec3::from(h.thumb.tip.position) + Vec3::from(h.index.tip.position)) * 0.5,
+				Quat::from(h.palm.rotation) * Quat::from_rotation_x(FRAC_PI_2),
+			),
+			InputDataType::Tip(t) => Transform::from_translation_rotation(t.origin, t.orientation),
+			_ => Transform::none(),
+		};
+		let _ = self
+			.pen_root
+			.set_relative_transform(self.queue.handler(), transform);
+	}
+	pub async fn waft(&mut self, _delta_secs: f32) -> Vec3 {
+		let Some(grab_actor) = self.grab_action.actor() else {
+			self.prev_position = None;
+			return Vec3::ZERO;
+		};
+		let position = Vec3::from(match &grab_actor.input {
+			InputDataType::Hand(h) => h.palm.position,
+			InputDataType::Tip(t) => t.origin,
+			_ => unreachable!(),
+		});
+		let handler_spatial = self.queue.handler().clone().as_spatial();
+
+		let root_transform = handler_spatial
+			.get_transform(self.client.get_root())
+			.await
+			.unwrap();
+		let mat = mat_from_transform(&root_transform);
+		let position = mat.transform_point3(position);
+		if self.move_action.currently_acting().contains(grab_actor) {
+			if let Some(prev_position) = self.prev_position {
+				let offset: Vec3 = position - prev_position;
+				let offset_magnify = (offset.length()/* * delta_secs */).powf(0.9);
+				self.prev_position = Some(position);
+				return offset.normalize_or_zero() * offset_magnify;
+			}
+		}
+
+		self.prev_position = Some(position);
+
+		Vec3::ZERO
+	}
+	pub fn update_signifiers(&self, mode: Mode) {
+		let thickness = Self::THICKNESS;
+		let visual_length = Self::LENGTH;
+		let grabbing = self
+			.grab_action
+			.actor()
+			.is_some_and(|actor| self.move_action.currently_acting().contains(actor));
+		let color = match (mode, grabbing) {
+			(Mode::Zone, false) => rgba_linear!(1.0, 1.0, 1.0, 1.0),
+			(Mode::MonadoOffset, false) => rgba_linear!(1.0, 1.0, 0.0, 1.0),
+			(Mode::Disabled, _) => rgba_linear!(0.2, 0.2, 0.2, 1.0),
+			(_, true) => rgba_linear!(0.0, 0.549, 1.0, 1.0),
+		};
+		let signifier_lines = [Line {
+			points: vec![
+				LinePoint {
+					point: [0.0; 3].into(),
+					thickness: 0.0,
+					color,
+				},
+				LinePoint {
+					point: [0.0, thickness, 0.0].into(),
+					thickness,
+					color,
+				},
+				LinePoint {
+					point: [0.0, visual_length, 0.0].into(),
+					thickness,
+					color,
+				},
+			],
+			cyclic: false,
+		}];
+		self.signifiers.set_lines(&signifier_lines).unwrap();
+	}
+}
 impl GrabInput {
+	fn update_mode(&mut self) -> bool {
+		self.button_hand.as_mut().is_some_and(|b| b.update())
+			|| self.button_controller.as_mut().is_some_and(|b| b.update())
+	}
 	pub fn handle_input(&mut self) {
 		self.queue.handle_events();
 		self.move_action.update(
@@ -80,7 +285,6 @@ impl GrabInput {
 			&self.queue,
 			|data| !matches!(&data.input, InputDataType::Pointer(_)),
 			|data| {
-				println!("test");
 				data.datamap.with_data(|d| match &data.input {
 					InputDataType::Hand(_) => d.idx("grab_strength").as_f32() > 0.9,
 					_ => d.idx("grab").as_f32() > 0.9,
@@ -88,8 +292,7 @@ impl GrabInput {
 			},
 		);
 	}
-	pub fn waft(&mut self, delta_secs: f32) -> Vec3 {
-		println!("waft");
+	pub async fn waft(&mut self, _delta_secs: f32) -> Vec3 {
 		let position = self.move_action.actor().map(|p| match &p.input {
 			InputDataType::Hand(h) => h.palm.position.into(),
 			InputDataType::Tip(t) => t.origin.into(),
@@ -98,8 +301,18 @@ impl GrabInput {
 
 		if let Some(prev_position) = self.prev_position {
 			if let Some(position) = position {
+				let handler_spatial = self.queue.handler().clone().as_spatial();
+
+				let root_transform = handler_spatial
+					.get_transform(self.client.get_root())
+					.await
+					.unwrap();
+				let mat = mat_from_transform(&root_transform);
+				let position = mat.transform_point3(position);
+
 				let offset: Vec3 = position - prev_position;
-				let offset_magnify = (offset.length() * delta_secs).powf(0.9);
+				let offset_magnify = (offset.length()/* * delta_secs */).powf(0.9);
+				self.prev_position = Some(position);
 				return offset.normalize_or_zero() * offset_magnify;
 			}
 		}
@@ -124,7 +337,6 @@ impl GrabInput {
 				.actor()
 				.map(|input| self.generate_signifier(input, true, mode)),
 		);
-		println!("lines: {}", signifier_lines.len());
 		self.signifiers.set_lines(&signifier_lines).unwrap();
 	}
 	fn generate_signifier(&self, input: &InputData, grabbing: bool, mode: Mode) -> Line {

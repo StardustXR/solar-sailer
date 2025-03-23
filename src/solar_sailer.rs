@@ -1,13 +1,8 @@
-use std::f32::consts::FRAC_PI_2;
-
-use glam::{vec3, Affine3A, Mat4, Quat, Vec3};
+use glam::{Affine3A, Quat, Vec3};
 use stardust_xr_fusion::{
-	drawable::{Line, Lines, LinesAspect as _},
-	input::{InputData, InputDataType},
-	spatial::{SpatialRef, Transform},
-	values::color::{color_space::LinearRgb, rgba_linear, Rgba},
+	spatial::Transform,
+	values::color::{Rgba, color_space::LinearRgb},
 };
-use stardust_xr_molecules::lines::{circle, LineExt};
 
 use crate::{input::Input, monado_movement::MonadoMovement, zone_movement::ZoneMovement};
 
@@ -15,9 +10,7 @@ pub struct SolarSailer {
 	pub monado_movement: Option<MonadoMovement>,
 	pub mode: Mode,
 	pub input: Input,
-	pub grab_color: Rgba<f32, LinearRgb>,
 	pub zone_movement: ZoneMovement,
-	pub hmd: SpatialRef,
 }
 
 impl SolarSailer {
@@ -29,15 +22,16 @@ impl SolarSailer {
 		self.input.handle_input();
 	}
 	pub async fn apply_offset(&mut self, delta_secs: f32) {
+		let vel_ref = &self.input.get_velocity_space();
 		match (&self.mode, self.monado_movement.as_mut()) {
-			(Mode::MonadoOffset, Some(monado)) => monado.apply_offset(delta_secs, &self.hmd).await,
-			(Mode::Zone, _) => self.zone_movement.apply_offset(delta_secs, &self.hmd).await,
+			(Mode::MonadoOffset, Some(monado)) => monado.apply_offset(delta_secs, vel_ref).await,
+			(Mode::Zone, _) => self.zone_movement.apply_offset(delta_secs, vel_ref).await,
 			_ => {}
 		}
 	}
 
-	pub fn update_velocity(&mut self, delta_secs: f32) {
-		let offset = self.input.waft(delta_secs);
+	pub async fn update_velocity(&mut self, delta_secs: f32) {
+		let offset = self.input.waft(delta_secs).await;
 		match self.mode {
 			Mode::Zone => {
 				self.zone_movement.velocity *= 0.99;
@@ -57,7 +51,7 @@ impl SolarSailer {
 	}
 }
 
-#[derive(Debug,Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Mode {
 	Zone,
 	MonadoOffset,
@@ -71,6 +65,3 @@ pub fn mat_from_transform(transform: &Transform) -> Affine3A {
 		transform.translation.map(Vec3::from).unwrap_or(Vec3::ZERO),
 	)
 }
-
-
- 

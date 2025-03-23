@@ -1,6 +1,5 @@
 mod input;
 mod monado_movement;
-// mod shared;
 mod mode_button;
 mod solar_sailer;
 mod zone_movement;
@@ -8,16 +7,11 @@ mod zone_movement;
 use input::Input;
 use libmonado::Monado;
 use manifest_dir_macros::directory_relative_path;
-use mode_button::{ButtonLocation, ModeButton};
 use monado_movement::MonadoMovement;
 use solar_sailer::{Mode, SolarSailer};
 use stardust_xr_fusion::{
 	client::Client,
-	drawable::Lines,
-	objects::hmd,
 	root::{RootAspect, RootEvent},
-	spatial::Transform,
-	values::color::rgba_linear,
 };
 use zone_movement::ZoneMovement;
 
@@ -44,20 +38,14 @@ async fn main() {
 
 	// let mut button_hand = ModeButton::new(&client, ButtonLocation::Hand).await;
 	// let mut button_controller = ModeButton::new(&client, ButtonLocation::Controller).await;
-	let mut button_hand: Option<ModeButton> = None;
-	let mut button_controller: Option<ModeButton> = None;
 
-	let input = Input::new_grab(&client).await.unwrap();
-
-	let hmd = hmd(&client).await.unwrap();
+	let input = Input::new_pen(&client).await.unwrap();
 
 	let mut solar_sailer = SolarSailer {
 		monado_movement: MonadoMovement::from_monado(&client, monado).await,
 		mode: Mode::MonadoOffset,
-		grab_color: rgba_linear!(0.0, 0.549, 1.0, 1.0),
 		input,
 		zone_movement: ZoneMovement::new(&client).unwrap(),
-		hmd,
 	};
 
 	let event_handle = async_loop.get_event_handle();
@@ -67,26 +55,26 @@ async fn main() {
 			continue;
 		};
 		if let RootEvent::Frame { info } = event {
-			let mut switch_mode = false;
-			if let Some(button) = button_hand.as_mut() {
-				switch_mode |= button.update();
-			}
-			if let Some(button) = button_controller.as_mut() {
-				switch_mode |= button.update();
-			}
-
+			let switch_mode = solar_sailer.input.update_mode();
+			// if switch_mode {
+			// 	solar_sailer.mode = match solar_sailer.mode {
+			// 		Mode::Disabled => Mode::MonadoOffset,
+			// 		Mode::MonadoOffset => Mode::Zone,
+			// 		Mode::Zone => Mode::Disabled,
+			// 	};
+			// }
 			if switch_mode {
 				solar_sailer.mode = match solar_sailer.mode {
-					Mode::Disabled => Mode::MonadoOffset,
+					Mode::Zone => Mode::MonadoOffset,
 					Mode::MonadoOffset => Mode::Zone,
-					Mode::Zone => Mode::Disabled,
+					Mode::Disabled => Mode::MonadoOffset
 				};
 			}
 
 			solar_sailer.handle_events();
 			solar_sailer.handle_input();
 			solar_sailer.update_signifiers();
-			solar_sailer.update_velocity(info.delta);
+			solar_sailer.update_velocity(info.delta).await;
 			solar_sailer.apply_offset(info.delta).await;
 		}
 	}

@@ -28,6 +28,7 @@ pub struct ModeButton {
 	model: Model,
 	enabled_event: mpsc::Receiver<ButtonEnabled>,
 }
+
 pub enum ButtonLocation {
 	Hand,
 	Controller,

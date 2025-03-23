@@ -17,7 +17,7 @@ pub struct MonadoMovement {
 }
 
 impl MonadoMovement {
-	pub async fn apply_offset(&mut self, delta_secs: f32, hmd: &SpatialRef) {
+	pub async fn apply_offset(&mut self, delta_secs: f32, velocity_ref: &SpatialRef) {
 		let origins = self
 			.monado
 			.tracking_origins()
@@ -34,7 +34,7 @@ impl MonadoMovement {
 		};
 
 		if self.velocity.length_squared() > 0.001 {
-			let Ok(transform) = hmd.get_transform(&self.stage).await else {
+			let Ok(transform) = velocity_ref.get_transform(&self.stage).await else {
 				return;
 			};
 			let mat = mat_from_transform(&transform);

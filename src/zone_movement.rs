@@ -2,13 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use glam::Vec3;
 use stardust_xr_fusion::{
-	fields::{CylinderShape, Field, Shape},
+	ClientHandle,
+	fields::{Field, Shape},
 	node::{NodeResult, NodeType},
 	spatial::{
 		Spatial, SpatialAspect, SpatialRef, SpatialRefAspect, Transform, Zone, ZoneAspect,
 		ZoneEvent,
 	},
-	ClientHandle,
 };
 
 use crate::solar_sailer::mat_from_transform;
@@ -44,11 +44,14 @@ impl ZoneMovement {
 			}
 		}
 	}
-	pub async fn apply_offset(&mut self, delta_secs: f32, hmd: &SpatialRef) {
-		let mat = mat_from_transform(&hmd.get_transform(&self.zone_spatial).await.unwrap());
-		// println!("{}", self.velocity);
+	pub async fn apply_offset(&mut self, delta_secs: f32, velocity_ref: &SpatialRef) {
+		let mat = mat_from_transform(
+			&velocity_ref
+				.get_transform(&self.zone_spatial)
+				.await
+				.unwrap(),
+		);
 		self.offset += mat.transform_vector3(self.velocity * delta_secs);
-		// println!("{}", self.offset);
 		_ = self
 			.zone_spatial
 			.set_local_transform(Transform::from_translation(self.offset));
@@ -56,12 +59,14 @@ impl ZoneMovement {
 
 	pub fn new(client: &Arc<ClientHandle>) -> NodeResult<Self> {
 		let zone_spatial = Spatial::create(client.get_root(), Transform::identity(), false)?;
-		let zone_field =
-			Field::create(&zone_spatial, Transform::identity(), Shape::Sphere(1000.0) /* Shape::Cylinder(CylinderShape{ length: 1000.0, radius: 1000.0 }) */)?;
+		let zone_field = Field::create(
+			&zone_spatial,
+			Transform::identity(),
+			Shape::Sphere(1000.0), 
+		)?;
 		let zone = Zone::create(&zone_spatial, Transform::identity(), &zone_field)?;
 		Ok(ZoneMovement {
 			velocity: Vec3::ZERO,
-			// TODO: load from state
 			offset: Vec3::ZERO,
 			zone,
 			_zone_field: zone_field,
