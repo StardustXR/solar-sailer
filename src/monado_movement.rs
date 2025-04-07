@@ -51,12 +51,15 @@ impl MonadoMovement {
 	}
 	pub async fn from_monado(client: &Arc<ClientHandle>, monado: Option<Monado>) -> Option<Self> {
 		let monado = monado?;
-		for origin in monado.tracking_origins().unwrap().into_iter() {
-			let _ = origin.set_offset(Pose {
-				position: Vec3::ZERO.into(),
-				orientation: Quat::IDENTITY.into(),
-			});
-		}
+		// this breaks playspace alignment, we would probably have to store our offset to a file
+		// (incase the process dies) and apply the reverse offset to reset, or maybe get the offset
+		// of the main origin and apply the reverse of that to all origins?
+		// for origin in monado.tracking_origins().unwrap().into_iter() {
+		// 	let _ = origin.set_offset(Pose {
+		// 		position: Vec3::ZERO.into(),
+		// 		orientation: Quat::IDENTITY.into(),
+		// 	});
+		// }
 		Some(MonadoMovement {
 			monado,
 			velocity: Vec3::ZERO,
