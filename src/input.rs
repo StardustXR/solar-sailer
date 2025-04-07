@@ -199,7 +199,10 @@ impl PenInput {
 				(Vec3::from(h.thumb.tip.position) + Vec3::from(h.index.tip.position)) * 0.5,
 				Quat::from(h.palm.rotation) * Quat::from_rotation_x(FRAC_PI_2),
 			),
-			InputDataType::Tip(t) => Transform::from_translation_rotation(t.origin, t.orientation),
+			InputDataType::Tip(t) => Transform::from_translation_rotation(
+				t.origin,
+				Quat::from(t.orientation) * Quat::from_rotation_x(FRAC_PI_2),
+			),
 			_ => Transform::none(),
 		};
 		let _ = self

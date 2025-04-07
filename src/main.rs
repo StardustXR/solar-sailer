@@ -1,6 +1,6 @@
 mod input;
-mod monado_movement;
 mod mode_button;
+mod monado_movement;
 mod solar_sailer;
 mod zone_movement;
 
@@ -54,28 +54,32 @@ async fn main() {
 		let Some(event) = client.get_root().recv_root_event() else {
 			continue;
 		};
-		if let RootEvent::Frame { info } = event {
-			let switch_mode = solar_sailer.input.update_mode();
-			// if switch_mode {
-			// 	solar_sailer.mode = match solar_sailer.mode {
-			// 		Mode::Disabled => Mode::MonadoOffset,
-			// 		Mode::MonadoOffset => Mode::Zone,
-			// 		Mode::Zone => Mode::Disabled,
-			// 	};
-			// }
-			if switch_mode {
-				solar_sailer.mode = match solar_sailer.mode {
-					Mode::Zone => Mode::MonadoOffset,
-					Mode::MonadoOffset => Mode::Zone,
-					Mode::Disabled => Mode::MonadoOffset
-				};
-			}
+		match event {
+			RootEvent::Ping { response } => response.send(Ok(())),
+			RootEvent::Frame { info } => {
+				let switch_mode = solar_sailer.input.update_mode();
+				// if switch_mode {
+				// 	solar_sailer.mode = match solar_sailer.mode {
+				// 		Mode::Disabled => Mode::MonadoOffset,
+				// 		Mode::MonadoOffset => Mode::Zone,
+				// 		Mode::Zone => Mode::Disabled,
+				// 	};
+				// }
+				if switch_mode {
+					solar_sailer.mode = match solar_sailer.mode {
+						Mode::Zone => Mode::MonadoOffset,
+						Mode::MonadoOffset => Mode::Zone,
+						Mode::Disabled => Mode::MonadoOffset,
+					};
+				}
 
-			solar_sailer.handle_events();
-			solar_sailer.handle_input();
-			solar_sailer.update_signifiers();
-			solar_sailer.update_velocity(info.delta).await;
-			solar_sailer.apply_offset(info.delta).await;
+				solar_sailer.handle_events();
+				solar_sailer.handle_input();
+				solar_sailer.update_signifiers();
+				solar_sailer.update_velocity(info.delta).await;
+				solar_sailer.apply_offset(info.delta).await;
+			}
+			RootEvent::SaveState { response: _ } => {}
 		}
 	}
 }
