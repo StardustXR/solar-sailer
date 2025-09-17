@@ -32,8 +32,8 @@ pub struct PenInput {
 	prev_position: Option<Vec3>,
 	signifiers: Lines,
 	client: Arc<ClientHandle>,
-	button: Button,
-	_button_model: Model,
+	// button: Button,
+	// _button_model: Model,
 }
 pub enum Input {
 	Grab(GrabInput),
@@ -113,13 +113,18 @@ impl PenInput {
 	const LENGTH: f32 = 0.075;
 	const THICKNESS: f32 = 0.005;
 	fn update_mode(&mut self) -> bool {
-		if !self.button.handle_events() {
-			return false;
-		}
-		self.button.released()
+		// if !self.button.handle_events() {
+		// 	return false;
+		// }
+		// self.button.released()
+		false
 	}
 	async fn new(client: &Arc<ClientHandle>) -> NodeResult<Self> {
-		let pen_root = Spatial::create(client.get_root(), Transform::none(), true)?;
+		let pen_root = Spatial::create(
+			client.get_root(),
+			Transform::none(),
+			true,
+		)?;
 		let signifiers = Lines::create(&pen_root, Transform::none(), &[])?;
 		let field = Field::create(
 			&pen_root,
@@ -131,20 +136,20 @@ impl PenInput {
 		)?;
 		let queue = InputHandler::create(client.get_root(), Transform::none(), &field)?.queue()?;
 
-		let button = Button::create(
-			&pen_root,
-			Transform::from_translation_rotation(
-				[0.0, Self::LENGTH * 1.1, 0.0],
-				Quat::from_rotation_x(-FRAC_PI_2),
-			),
-			[0.02; 2],
-			ButtonSettings::default(),
-		)?;
-		let button_model = Model::create(
-			button.touch_plane().root(),
-			Transform::identity(),
-			&ResourceID::new_namespaced("solar_sailer", "move_icon"),
-		)?;
+		// let button = Button::create(
+		// 	&pen_root,
+		// 	Transform::from_translation_rotation(
+		// 		[0.0, Self::LENGTH * 1.1, 0.0],
+		// 		Quat::from_rotation_x(-FRAC_PI_2),
+		// 	),
+		// 	[0.02; 2],
+		// 	ButtonSettings::default(),
+		// )?;
+		// let button_model = Model::create(
+		// 	button.touch_plane().root(),
+		// 	Transform::identity(),
+		// 	&ResourceID::new_namespaced("solar_sailer", "move_icon"),
+		// )?;
 
 		Ok(Self {
 			move_action: Default::default(),
@@ -155,8 +160,8 @@ impl PenInput {
 			prev_position: None,
 			signifiers,
 			client: client.clone(),
-			button,
-			_button_model: button_model,
+			// button,
+			// _button_model: button_model,
 		})
 	}
 	fn handle_input(&mut self) {
@@ -197,12 +202,11 @@ impl PenInput {
 		let transform = match &grab_actor.input {
 			InputDataType::Hand(h) => Transform::from_translation_rotation(
 				(Vec3::from(h.thumb.tip.position) + Vec3::from(h.index.tip.position)) * 0.5,
-				Quat::from(h.palm.rotation) * Quat::from_rotation_x(FRAC_PI_2),
+				Quat::from(h.palm.rotation),
 			),
-			InputDataType::Tip(t) => Transform::from_translation_rotation(
-				t.origin,
-				Quat::from(t.orientation) * Quat::from_rotation_x(FRAC_PI_2),
-			),
+			InputDataType::Tip(t) => {
+				Transform::from_translation_rotation(t.origin, Quat::from(t.orientation))
+			}
 			_ => Transform::none(),
 		};
 		let _ = self
@@ -241,7 +245,7 @@ impl PenInput {
 		Vec3::ZERO
 	}
 	pub fn update_signifiers(&self, mode: Mode) {
-		let thickness = Self::THICKNESS;
+		let thickness = Self::THICKNESS * 0.5;
 		let visual_length = Self::LENGTH;
 		let grabbing = self
 			.grab_action

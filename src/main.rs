@@ -45,7 +45,7 @@ async fn main() {
 		monado_movement: MonadoMovement::from_monado(&client, monado).await,
 		mode: Mode::MonadoOffset,
 		input,
-		zone_movement: ZoneMovement::new(&client).unwrap(),
+		// zone_movement: ZoneMovement::new(&client).unwrap(),
 	};
 
 	let event_handle = async_loop.get_event_handle();

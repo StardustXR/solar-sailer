@@ -10,12 +10,12 @@ pub struct SolarSailer {
 	pub monado_movement: Option<MonadoMovement>,
 	pub mode: Mode,
 	pub input: Input,
-	pub zone_movement: ZoneMovement,
+	// pub zone_movement: ZoneMovement,
 }
 
 impl SolarSailer {
 	pub fn handle_events(&mut self) {
-		self.zone_movement.update_zone();
+		// self.zone_movement.update_zone();
 	}
 
 	pub fn handle_input(&mut self) {
@@ -25,7 +25,7 @@ impl SolarSailer {
 		let vel_ref = &self.input.get_velocity_space();
 		match (&self.mode, self.monado_movement.as_mut()) {
 			(Mode::MonadoOffset, Some(monado)) => monado.apply_offset(delta_secs, vel_ref).await,
-			(Mode::Zone, _) => self.zone_movement.apply_offset(delta_secs, vel_ref).await,
+			// (Mode::Zone, _) => self.zone_movement.apply_offset(delta_secs, vel_ref).await,
 			_ => {}
 		}
 	}
@@ -34,8 +34,8 @@ impl SolarSailer {
 		let offset = self.input.waft(delta_secs).await;
 		match self.mode {
 			Mode::Zone => {
-				self.zone_movement.velocity *= 0.99;
-				self.zone_movement.velocity += offset
+				// self.zone_movement.velocity *= 0.99;
+				// self.zone_movement.velocity += offset
 			}
 			Mode::MonadoOffset => {
 				if let Some(monado_movement) = self.monado_movement.as_mut() {
