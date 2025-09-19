@@ -120,11 +120,7 @@ impl PenInput {
 		false
 	}
 	async fn new(client: &Arc<ClientHandle>) -> NodeResult<Self> {
-		let pen_root = Spatial::create(
-			client.get_root(),
-			Transform::none(),
-			true,
-		)?;
+		let pen_root = Spatial::create(client.get_root(), Transform::none(), true)?;
 		let signifiers = Lines::create(&pen_root, Transform::none(), &[])?;
 		let field = Field::create(
 			&pen_root,
@@ -204,9 +200,10 @@ impl PenInput {
 				(Vec3::from(h.thumb.tip.position) + Vec3::from(h.index.tip.position)) * 0.5,
 				Quat::from(h.palm.rotation),
 			),
-			InputDataType::Tip(t) => {
-				Transform::from_translation_rotation(t.origin, Quat::from(t.orientation))
-			}
+			InputDataType::Tip(t) => Transform::from_translation_rotation(
+				t.origin,
+				Quat::from(t.orientation) * Quat::from_rotation_x(FRAC_PI_2),
+			),
 			_ => Transform::none(),
 		};
 		let _ = self
