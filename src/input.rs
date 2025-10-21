@@ -32,8 +32,8 @@ pub struct PenInput {
 	prev_position: Option<Vec3>,
 	signifiers: Lines,
 	client: Arc<ClientHandle>,
-	// button: Button,
-	// _button_model: Model,
+	button: Button,
+	_button_model: Model,
 }
 pub enum Input {
 	Grab(GrabInput),
@@ -113,11 +113,10 @@ impl PenInput {
 	const LENGTH: f32 = 0.075;
 	const THICKNESS: f32 = 0.005;
 	fn update_mode(&mut self) -> bool {
-		// if !self.button.handle_events() {
-		// 	return false;
-		// }
-		// self.button.released()
-		false
+		if !self.button.handle_events() {
+			return false;
+		}
+		self.button.released()
 	}
 	async fn new(client: &Arc<ClientHandle>) -> NodeResult<Self> {
 		let pen_root = Spatial::create(client.get_root(), Transform::none(), true)?;
@@ -132,20 +131,20 @@ impl PenInput {
 		)?;
 		let queue = InputHandler::create(client.get_root(), Transform::none(), &field)?.queue()?;
 
-		// let button = Button::create(
-		// 	&pen_root,
-		// 	Transform::from_translation_rotation(
-		// 		[0.0, Self::LENGTH * 1.1, 0.0],
-		// 		Quat::from_rotation_x(-FRAC_PI_2),
-		// 	),
-		// 	[0.02; 2],
-		// 	ButtonSettings::default(),
-		// )?;
-		// let button_model = Model::create(
-		// 	button.touch_plane().root(),
-		// 	Transform::identity(),
-		// 	&ResourceID::new_namespaced("solar_sailer", "move_icon"),
-		// )?;
+		let button = Button::create(
+			&pen_root,
+			Transform::from_translation_rotation(
+				[0.0, Self::LENGTH * 1.1, 0.0],
+				Quat::from_rotation_x(-FRAC_PI_2),
+			),
+			[0.02; 2],
+			ButtonSettings::default(),
+		)?;
+		let button_model = Model::create(
+			button.touch_plane().root(),
+			Transform::identity(),
+			&ResourceID::new_namespaced("solar_sailer", "move_icon"),
+		)?;
 
 		Ok(Self {
 			move_action: Default::default(),
@@ -156,8 +155,8 @@ impl PenInput {
 			prev_position: None,
 			signifiers,
 			client: client.clone(),
-			// button,
-			// _button_model: button_model,
+			button,
+			_button_model: button_model,
 		})
 	}
 	fn handle_input(&mut self) {
@@ -228,13 +227,13 @@ impl PenInput {
 			.unwrap();
 		let mat = mat_from_transform(&root_transform);
 		let position = mat.transform_point3(position);
-		if self.move_action.currently_acting().contains(grab_actor) {
-			if let Some(prev_position) = self.prev_position {
-				let offset: Vec3 = position - prev_position;
-				let offset_magnify = (offset.length()/* * delta_secs */).powf(0.9);
-				self.prev_position = Some(position);
-				return offset.normalize_or_zero() * offset_magnify;
-			}
+		if self.move_action.currently_acting().contains(grab_actor)
+			&& let Some(prev_position) = self.prev_position
+		{
+			let offset: Vec3 = position - prev_position;
+			let offset_magnify = (offset.length()/* * delta_secs */).powf(0.9);
+			self.prev_position = Some(position);
+			return offset.normalize_or_zero() * offset_magnify;
 		}
 
 		self.prev_position = Some(position);
@@ -249,7 +248,7 @@ impl PenInput {
 			.actor()
 			.is_some_and(|actor| self.move_action.currently_acting().contains(actor));
 		let color = match (mode, grabbing) {
-			(Mode::Zone, false) => rgba_linear!(1.0, 1.0, 1.0, 1.0),
+			(Mode::Reparent, false) => rgba_linear!(1.0, 1.0, 1.0, 1.0),
 			(Mode::MonadoOffset, false) => rgba_linear!(1.0, 1.0, 0.0, 1.0),
 			(Mode::Disabled, _) => rgba_linear!(0.2, 0.2, 0.2, 1.0),
 			(_, true) => rgba_linear!(0.0, 0.549, 1.0, 1.0),

@@ -33,7 +33,7 @@ impl MonadoMovement {
 			return;
 		};
 
-		if self.velocity.length_squared() > 0.001 {
+		if self.velocity.length_squared() > 0.0005 {
 			let Ok(transform) = velocity_ref.get_transform(&self.stage).await else {
 				return;
 			};

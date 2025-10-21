@@ -4,12 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-color-eyre = "0.6.2"
 glam = { version = "0.27.0", features = ["mint"] }
-manifest-dir-macros = "0.1.18"
 mint = "0.5.9"
-send_wrapper = "0.6.0"
 tokio = { version = "1.32.0", features = ["rt", "tokio-macros", "sync"] }
+tracing = "0.1.41"
 tokio-stream = "0.1.17"
 tracing-subscriber = { version = "0.3.19", features = ["tracing"] }
 

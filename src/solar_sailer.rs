@@ -1,23 +1,18 @@
 use glam::{Affine3A, Quat, Vec3};
-use stardust_xr_fusion::{
-	spatial::Transform,
-	values::color::{Rgba, color_space::LinearRgb},
-};
+use stardust_xr_fusion::spatial::Transform;
 
-use crate::{input::Input, monado_movement::MonadoMovement, zone_movement::ZoneMovement};
+use crate::{
+	input::Input, monado_movement::MonadoMovement, reparentable_movement::ReparentMovement,
+};
 
 pub struct SolarSailer {
 	pub monado_movement: Option<MonadoMovement>,
 	pub mode: Mode,
 	pub input: Input,
-	// pub zone_movement: ZoneMovement,
+	pub reparent_movement: ReparentMovement,
 }
 
 impl SolarSailer {
-	pub fn handle_events(&mut self) {
-		// self.zone_movement.update_zone();
-	}
-
 	pub fn handle_input(&mut self) {
 		self.input.handle_input();
 	}
@@ -25,7 +20,7 @@ impl SolarSailer {
 		let vel_ref = &self.input.get_velocity_space();
 		match (&self.mode, self.monado_movement.as_mut()) {
 			(Mode::MonadoOffset, Some(monado)) => monado.apply_offset(delta_secs, vel_ref).await,
-			// (Mode::Zone, _) => self.zone_movement.apply_offset(delta_secs, vel_ref).await,
+			(Mode::Reparent, _) => self.reparent_movement.apply_offset(delta_secs, vel_ref).await,
 			_ => {}
 		}
 	}
@@ -33,9 +28,9 @@ impl SolarSailer {
 	pub async fn update_velocity(&mut self, delta_secs: f32) {
 		let offset = self.input.waft(delta_secs).await;
 		match self.mode {
-			Mode::Zone => {
-				// self.zone_movement.velocity *= 0.99;
-				// self.zone_movement.velocity += offset
+			Mode::Reparent => {
+				self.reparent_movement.velocity *= 0.99;
+				self.reparent_movement.velocity += offset
 			}
 			Mode::MonadoOffset => {
 				if let Some(monado_movement) = self.monado_movement.as_mut() {
@@ -53,7 +48,7 @@ impl SolarSailer {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
-	Zone,
+	Reparent,
 	MonadoOffset,
 	Disabled,
 }
