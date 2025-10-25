@@ -3,6 +3,7 @@ use std::{f32::consts::FRAC_PI_2, sync::Arc};
 use glam::{Mat4, Quat, Vec3, vec3};
 use stardust_xr_fusion::{
 	ClientHandle,
+	core::schemas::zbus::Connection,
 	drawable::{Line, LinePoint, Lines, LinesAspect as _, Model},
 	fields::{CylinderShape, Field, Shape},
 	input::{InputData, InputDataType, InputHandler},
@@ -16,6 +17,7 @@ use stardust_xr_molecules::{
 	button::{Button, ButtonSettings},
 	input_action::{InputQueue, InputQueueable as _, SimpleAction, SingleAction},
 	lines::{LineExt as _, circle},
+	reparentable::Reparentable,
 };
 
 use crate::{
@@ -26,15 +28,18 @@ use crate::{
 pub struct PenInput {
 	move_action: SimpleAction,
 	grab_action: SingleAction,
-	_field: Field,
+	field: Field,
 	pen_root: Spatial,
 	queue: InputQueue,
 	prev_position: Option<Vec3>,
 	signifiers: Lines,
 	client: Arc<ClientHandle>,
 	button: Button,
+	reparentable: Option<Reparentable>,
+	connection: Connection,
 	_button_model: Model,
 }
+#[allow(dead_code, clippy::large_enum_variant)]
 pub enum Input {
 	Grab(GrabInput),
 	Pen(PenInput),
@@ -51,8 +56,8 @@ pub struct GrabInput {
 }
 
 impl Input {
-	pub async fn new_pen(client: &Arc<ClientHandle>) -> NodeResult<Self> {
-		PenInput::new(client).await.map(Input::Pen)
+	pub async fn new_pen(client: &Arc<ClientHandle>, connection: Connection) -> NodeResult<Self> {
+		PenInput::new(client, connection).await.map(Input::Pen)
 	}
 	pub async fn new_grab(client: &Arc<ClientHandle>) -> NodeResult<Self> {
 		let field = Field::create(
@@ -118,7 +123,7 @@ impl PenInput {
 		}
 		self.button.released()
 	}
-	async fn new(client: &Arc<ClientHandle>) -> NodeResult<Self> {
+	async fn new(client: &Arc<ClientHandle>, connection: Connection) -> NodeResult<Self> {
 		let pen_root = Spatial::create(client.get_root(), Transform::none(), true)?;
 		let signifiers = Lines::create(&pen_root, Transform::none(), &[])?;
 		let field = Field::create(
@@ -146,18 +151,36 @@ impl PenInput {
 			&ResourceID::new_namespaced("solar_sailer", "move_icon"),
 		)?;
 
-		Ok(Self {
+		let mut pen = Self {
 			move_action: Default::default(),
 			grab_action: Default::default(),
-			_field: field,
+			field,
 			pen_root,
 			queue,
 			prev_position: None,
 			signifiers,
 			client: client.clone(),
 			button,
+			reparentable: None,
+			connection,
+
 			_button_model: button_model,
-		})
+		};
+		pen.make_reparentable();
+		Ok(pen)
+	}
+	fn make_reparentable(&mut self) {
+		if self.reparentable.is_some() {
+			return;
+		}
+		self.reparentable = Reparentable::create(
+			self.connection.clone(),
+			"/Pen",
+			self.queue.handler().clone().as_spatial_ref(),
+			self.pen_root.clone(),
+			Some(self.field.clone()),
+		)
+		.ok();
 	}
 	fn handle_input(&mut self) {
 		if !self.queue.handle_events() {
@@ -186,10 +209,10 @@ impl PenInput {
 		});
 
 		if self.grab_action.actor_started() {
-			let _ = self.pen_root.set_zoneable(false);
+			self.make_reparentable();
 		}
 		if self.grab_action.actor_stopped() {
-			let _ = self.pen_root.set_zoneable(true);
+			self.reparentable.take();
 		}
 		let Some(grab_actor) = self.grab_action.actor() else {
 			return;
@@ -302,22 +325,22 @@ impl GrabInput {
 			_ => unreachable!(),
 		});
 
-		if let Some(prev_position) = self.prev_position {
-			if let Some(position) = position {
-				let handler_spatial = self.queue.handler().clone().as_spatial();
+		if let Some(prev_position) = self.prev_position
+			&& let Some(position) = position
+		{
+			let handler_spatial = self.queue.handler().clone().as_spatial();
 
-				let root_transform = handler_spatial
-					.get_transform(self.client.get_root())
-					.await
-					.unwrap();
-				let mat = mat_from_transform(&root_transform);
-				let position = mat.transform_point3(position);
+			let root_transform = handler_spatial
+				.get_transform(self.client.get_root())
+				.await
+				.unwrap();
+			let mat = mat_from_transform(&root_transform);
+			let position = mat.transform_point3(position);
 
-				let offset: Vec3 = position - prev_position;
-				let offset_magnify = (offset.length()/* * delta_secs */).powf(0.9);
-				self.prev_position = Some(position);
-				return offset.normalize_or_zero() * offset_magnify;
-			}
+			let offset: Vec3 = position - prev_position;
+			let offset_magnify = (offset.length()/* * delta_secs */).powf(0.9);
+			self.prev_position = Some(position);
+			return offset.normalize_or_zero() * offset_magnify;
 		}
 
 		self.prev_position = position;

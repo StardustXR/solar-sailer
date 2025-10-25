@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use glam::{Quat, Vec3};
+use glam::Vec3;
 use libmonado::{Monado, Pose};
 use stardust_xr_fusion::{
+	ClientHandle,
 	objects::play_space,
 	spatial::{SpatialRef, SpatialRefAspect},
-	ClientHandle,
 };
 
 use crate::solar_sailer::mat_from_transform;

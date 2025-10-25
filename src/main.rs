@@ -42,7 +42,7 @@ async fn main() {
 	// let mut button_hand = ModeButton::new(&client, ButtonLocation::Hand).await;
 	// let mut button_controller = ModeButton::new(&client, ButtonLocation::Controller).await;
 
-	let input = Input::new_pen(&client).await.unwrap();
+	let input = Input::new_pen(&client, conn.clone()).await.unwrap();
 
 	let mut solar_sailer = SolarSailer {
 		monado_movement: MonadoMovement::from_monado(&client, monado).await,
