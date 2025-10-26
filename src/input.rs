@@ -273,8 +273,8 @@ impl PenInput {
 		let color = match (mode, grabbing) {
 			(Mode::Reparent, false) => rgba_linear!(1.0, 1.0, 1.0, 1.0),
 			(Mode::MonadoOffset, false) => rgba_linear!(1.0, 1.0, 0.0, 1.0),
-			(Mode::Disabled, _) => rgba_linear!(0.2, 0.2, 0.2, 1.0),
-			(_, true) => rgba_linear!(0.0, 0.549, 1.0, 1.0),
+			(Mode::Disabled, _) => rgba_linear!(0.033104762, 0.033104762, 0.033104762, 1.),
+			(_, true) => rgba_linear!(0., 0.26223028, 1., 1.),
 		};
 		let signifier_lines = [Line {
 			points: vec![
@@ -389,7 +389,7 @@ impl GrabInput {
 		)
 		.transform(transform);
 		if grabbing {
-			line.color(rgba_linear!(0.0, 0.549, 1.0, 1.0))
+			line.color(rgba_linear!(0., 0.26223028, 1., 1.))
 		} else if matches!(mode, Mode::MonadoOffset) {
 			line.color(rgba_linear!(1.0, 1.0, 0.0, 1.0))
 		} else {
