@@ -11,7 +11,7 @@ use reparentable_movement::ReparentMovement;
 use solar_sailer::{Mode, SolarSailer};
 use stardust_xr_fusion::{
 	client::Client,
-	core::schemas::zbus::{Connection, fdo::ObjectManager},
+	core::schemas::zbus::{Connection, conn::Builder, fdo::ObjectManager},
 	objects::object_registry::ObjectRegistry,
 	project_local_resources,
 	root::{RootAspect, RootEvent},
@@ -25,8 +25,13 @@ async fn main() {
 	client
 		.setup_resources(&[&project_local_resources!("res")])
 		.unwrap();
-	let conn = Connection::session().await.unwrap();
-	conn.object_server().at("/", ObjectManager).await.unwrap();
+	let conn = Builder::session()
+		.unwrap()
+		.serve_at("/", ObjectManager)
+		.unwrap()
+		.build()
+		.await
+		.unwrap();
 	let object_registry = ObjectRegistry::new(&conn).await;
 	let client_handle = client.handle();
 	let async_loop = client.async_event_loop();
