@@ -1,23 +1,24 @@
-use std::{ops::Deref, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use glam::{Affine3A, Vec3};
 use stardust_xr_fusion::{
 	ClientHandle,
-	list_query::{ListEvent, ObjectListQuery},
 	node::NodeResult,
-	objects::{interfaces::ReparentableProxy, object_registry::ObjectRegistry},
-	query::ObjectQuery,
+	objects::{ObjectInfo, interfaces::ReparentableProxy, object_registry::ObjectRegistry},
+	query::{ObjectQuery, QueryEvent},
 	spatial::{Spatial, SpatialAspect, SpatialRef, SpatialRefAspect, Transform},
 };
-use tracing::{error, info};
+use stardust_xr_molecules::dbus::AbortOnDrop;
+use tracing::error;
 
 use crate::solar_sailer::mat_from_transform;
 
 pub struct ReparentMovement {
 	pub velocity: Vec3,
 	spatial: Spatial,
-	moving: bool,
-	query: ObjectListQuery<ReparentableProxy<'static>>,
+	spatial_id: u64,
+	reparenting: Option<AbortOnDrop>,
+	obj_reg: Arc<ObjectRegistry>,
 }
 
 impl ReparentMovement {
@@ -25,36 +26,18 @@ impl ReparentMovement {
 		if self.velocity.length_squared() < 0.0005 {
 			return;
 		}
-		match (self.velocity == Vec3::ZERO, self.moving) {
+		match (self.velocity == Vec3::ZERO, self.reparenting.is_some()) {
 			(true, true) => {
-				let map = self.query.iter().await;
-				for reparentable in map.deref().values() {
-					info!("unparenting reparentable");
-					if let Err(err) = reparentable.unparent().await {
-						error!("unable to unparent from reparentable: {err}");
-					}
-				}
+				self.reparenting.take();
 			}
 			(false, false) => {
-				let map = self.query.iter().await;
-				let Ok(id) = self
-					.spatial
-					.export_spatial()
-					.await
-					.inspect_err(|err| error!("unable to export Spatial: {err}"))
-				else {
-					return;
-				};
-				for reparentable in map.deref().values() {
-					info!("reparenting reparentable");
-					if let Err(err) = reparentable.parent(id).await {
-						error!("unable to parent to reparentable: {err}");
-					}
-				}
+				self.reparenting = Some(AbortOnDrop(
+					tokio::spawn(Self::reparent_task(self.spatial_id, self.obj_reg.clone()))
+						.abort_handle(),
+				));
 			}
 			_ => {}
 		}
-		self.moving = self.velocity != Vec3::ZERO;
 		let mat = mat_from_transform(&velocity_ref.get_transform(&self.spatial).await.unwrap());
 		let movement = mat.transform_vector3(self.velocity * delta_secs);
 		let offset = Affine3A::from_translation(movement);
@@ -66,20 +49,45 @@ impl ReparentMovement {
 		}
 	}
 
-	pub fn new(client: &Arc<ClientHandle>, obj_reg: Arc<ObjectRegistry>) -> NodeResult<Self> {
+	pub async fn new(client: &Arc<ClientHandle>, obj_reg: Arc<ObjectRegistry>) -> NodeResult<Self> {
 		let spatial = Spatial::create(client.get_root(), Transform::identity(), false)?;
-		let (query, mapper) =
-			ObjectQuery::<ReparentableProxy, ()>::new(obj_reg, ()).to_list_query();
-		tokio::spawn(mapper.init(async |event| match event {
-			ListEvent::NewMatch(v) => Some(v),
-			ListEvent::Modified(v) => Some(v),
-			_ => None,
-		}));
+		let spatial_id = spatial.export_spatial().await?;
 		Ok(ReparentMovement {
 			velocity: Vec3::ZERO,
-			moving: false,
 			spatial,
-			query,
+			spatial_id,
+			obj_reg,
+			reparenting: None,
 		})
+	}
+
+	async fn reparent_task(spatial_id: u64, obj_reg: Arc<ObjectRegistry>) {
+		let mut reparented = ReparentedSpatials::default();
+		let mut query = ObjectQuery::<ReparentableProxy, ()>::new(obj_reg, ());
+		while let Some(e) = query.recv_event().await {
+			match e {
+				QueryEvent::NewMatch(object_info, proxy) => {
+					if proxy.parent(spatial_id).await.is_ok() {
+						reparented.0.insert(object_info, proxy);
+					}
+				}
+				QueryEvent::MatchLost(object_info) => {
+					reparented.0.remove(&object_info);
+				}
+				_ => {}
+			}
+		}
+	}
+}
+
+#[derive(Default)]
+struct ReparentedSpatials<'a>(HashMap<ObjectInfo, ReparentableProxy<'a>>);
+impl Drop for ReparentedSpatials<'_> {
+	fn drop(&mut self) {
+		tokio::runtime::Handle::current().block_on(async {
+			for (_, proxy) in self.0.drain() {
+				_ = proxy.unparent().await;
+			}
+		});
 	}
 }

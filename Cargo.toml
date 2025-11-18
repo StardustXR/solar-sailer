@@ -16,8 +16,9 @@ git = "https://github.com/StardustXR/core.git"
 branch = "dev"
 
 [dependencies.stardust-xr-molecules]
-git = "https://github.com/StardustXR/molecules.git"
-branch = "dev"
+# git = "https://github.com/StardustXR/molecules.git"
+# branch = "dev"
+path = "../molecules"
 
 [dependencies.libmonado]
 git = "https://github.com/technobaboo/libmonado-rs.git"

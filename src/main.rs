@@ -48,7 +48,7 @@ async fn main() {
 		monado_movement: MonadoMovement::from_monado(&client, monado).await,
 		mode: Mode::MonadoOffset,
 		input,
-		reparent_movement: ReparentMovement::new(&client, object_registry).unwrap(),
+		reparent_movement: ReparentMovement::new(&client, object_registry).await.unwrap(),
 	};
 
 	let event_handle = async_loop.get_event_handle();
