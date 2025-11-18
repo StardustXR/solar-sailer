@@ -19,6 +19,7 @@ use stardust_xr_molecules::{
 	lines::{LineExt as _, circle},
 	reparentable::Reparentable,
 };
+use tracing::{error, info};
 
 use crate::{
 	mode_button::ModeButton,
@@ -180,6 +181,7 @@ impl PenInput {
 			self.pen_root.clone(),
 			Some(self.field.clone()),
 		)
+		.inspect_err(|err| error!("unable to make reparentable: {err}"))
 		.ok();
 	}
 	fn handle_input(&mut self) {
@@ -209,10 +211,10 @@ impl PenInput {
 		});
 
 		if self.grab_action.actor_started() {
-			self.make_reparentable();
+			self.reparentable.take();
 		}
 		if self.grab_action.actor_stopped() {
-			self.reparentable.take();
+			self.make_reparentable();
 		}
 		let Some(grab_actor) = self.grab_action.actor() else {
 			return;

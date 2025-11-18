@@ -11,7 +11,7 @@ use reparentable_movement::ReparentMovement;
 use solar_sailer::{Mode, SolarSailer};
 use stardust_xr_fusion::{
 	client::Client,
-	core::schemas::zbus::Connection,
+	core::schemas::zbus::{Connection, fdo::ObjectManager},
 	objects::object_registry::ObjectRegistry,
 	project_local_resources,
 	root::{RootAspect, RootEvent},
@@ -26,6 +26,7 @@ async fn main() {
 		.setup_resources(&[&project_local_resources!("res")])
 		.unwrap();
 	let conn = Connection::session().await.unwrap();
+	conn.object_server().at("/", ObjectManager).await.unwrap();
 	let object_registry = ObjectRegistry::new(&conn).await;
 	let client_handle = client.handle();
 	let async_loop = client.async_event_loop();
@@ -48,7 +49,9 @@ async fn main() {
 		monado_movement: MonadoMovement::from_monado(&client, monado).await,
 		mode: Mode::MonadoOffset,
 		input,
-		reparent_movement: ReparentMovement::new(&client, object_registry).await.unwrap(),
+		reparent_movement: ReparentMovement::new(&client, object_registry)
+			.await
+			.unwrap(),
 	};
 
 	let event_handle = async_loop.get_event_handle();
