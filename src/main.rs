@@ -4,6 +4,7 @@ mod monado_movement;
 mod reparentable_movement;
 mod solar_sailer;
 
+use glam::Vec3;
 use input::Input;
 use libmonado::Monado;
 use monado_movement::MonadoMovement;
@@ -37,27 +38,12 @@ async fn main() {
 	let async_loop = client.async_event_loop();
 	let client = client_handle;
 
-	let monado = match Monado::auto_connect() {
-		Ok(v) => Some(v),
-		Err(err) => {
-			error!("Couldn't connect to monado :( {err}");
-			None
-		}
-	};
-
 	// let mut button_hand = ModeButton::new(&client, ButtonLocation::Hand).await;
 	// let mut button_controller = ModeButton::new(&client, ButtonLocation::Controller).await;
 
 	let input = Input::new_pen(&client, conn.clone()).await.unwrap();
 
-	let mut solar_sailer = SolarSailer {
-		monado_movement: MonadoMovement::from_monado(&client, monado).await,
-		mode: Mode::MonadoOffset,
-		input,
-		reparent_movement: ReparentMovement::new(&client, object_registry)
-			.await
-			.unwrap(),
-	};
+	let mut solar_sailer = SolarSailer::new(client.clone(), object_registry, input).await;
 
 	let event_handle = async_loop.get_event_handle();
 	loop {
@@ -68,7 +54,8 @@ async fn main() {
 		match event {
 			RootEvent::Ping { response } => response.send_ok(()),
 			RootEvent::Frame { info } => {
-				let switch_mode = solar_sailer.input.update_mode();
+				solar_sailer.handle_input();
+				let switch_mode = solar_sailer.should_switch_mode();
 				// if switch_mode {
 				// 	solar_sailer.mode = match solar_sailer.mode {
 				// 		Mode::Disabled => Mode::MonadoOffset,
@@ -77,14 +64,13 @@ async fn main() {
 				// 	};
 				// }
 				if switch_mode {
-					solar_sailer.mode = match solar_sailer.mode {
+					solar_sailer.switch_mode(match solar_sailer.current_mode() {
 						Mode::Reparent => Mode::MonadoOffset,
 						Mode::MonadoOffset => Mode::Reparent,
 						Mode::Disabled => Mode::MonadoOffset,
-					};
+					});
 				}
 
-				solar_sailer.handle_input();
 				solar_sailer.update_signifiers();
 				solar_sailer.update_velocity(info.delta).await;
 				solar_sailer.apply_offset(info.delta).await;

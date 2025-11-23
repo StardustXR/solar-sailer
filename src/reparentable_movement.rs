@@ -14,7 +14,6 @@ use tracing::error;
 use crate::solar_sailer::mat_from_transform;
 
 pub struct ReparentMovement {
-	pub velocity: Vec3,
 	spatial: Spatial,
 	spatial_id: u64,
 	reparenting: Option<AbortOnDrop>,
@@ -22,24 +21,21 @@ pub struct ReparentMovement {
 }
 
 impl ReparentMovement {
-	pub async fn apply_offset(&mut self, delta_secs: f32, velocity_ref: &SpatialRef) {
-		if self.velocity.length_squared() < 0.0005 {
-			return;
+	pub async fn apply_offset(
+		&mut self,
+		delta_secs: f32,
+		velocity_ref: &SpatialRef,
+		velocity: Vec3,
+	) {
+		if self.reparenting.is_none() {
+			self.reparenting = Some(AbortOnDrop(
+				tokio::spawn(Self::reparent_task(self.spatial_id, self.obj_reg.clone()))
+					.abort_handle(),
+			));
 		}
-		match (self.velocity == Vec3::ZERO, self.reparenting.is_some()) {
-			(true, true) => {
-				self.reparenting.take();
-			}
-			(false, false) => {
-				self.reparenting = Some(AbortOnDrop(
-					tokio::spawn(Self::reparent_task(self.spatial_id, self.obj_reg.clone()))
-						.abort_handle(),
-				));
-			}
-			_ => {}
-		}
+
 		let mat = mat_from_transform(&velocity_ref.get_transform(&self.spatial).await.unwrap());
-		let movement = mat.transform_vector3(self.velocity * delta_secs);
+		let movement = mat.transform_vector3(velocity * delta_secs);
 		let offset = Affine3A::from_translation(movement);
 		if let Err(err) = self.spatial.set_relative_transform(
 			velocity_ref,
@@ -49,11 +45,14 @@ impl ReparentMovement {
 		}
 	}
 
+	pub fn stopped_moving(&mut self) {
+		self.reparenting.take();
+	}
+
 	pub async fn new(client: &Arc<ClientHandle>, obj_reg: Arc<ObjectRegistry>) -> NodeResult<Self> {
 		let spatial = Spatial::create(client.get_root(), Transform::identity(), false)?;
 		let spatial_id = spatial.export_spatial().await?;
 		Ok(ReparentMovement {
-			velocity: Vec3::ZERO,
 			spatial,
 			spatial_id,
 			obj_reg,
@@ -81,13 +80,13 @@ impl ReparentMovement {
 }
 
 #[derive(Default)]
-struct ReparentedSpatials<'a>(HashMap<ObjectInfo, ReparentableProxy<'a>>);
-impl Drop for ReparentedSpatials<'_> {
+struct ReparentedSpatials(HashMap<ObjectInfo, ReparentableProxy<'static>>);
+impl Drop for ReparentedSpatials {
 	fn drop(&mut self) {
-		tokio::runtime::Handle::current().block_on(async {
-			for (_, proxy) in self.0.drain() {
+		for (_, proxy) in self.0.drain() {
+			tokio::spawn(async move {
 				_ = proxy.unparent().await;
-			}
-		});
+			});
+		}
 	}
 }
