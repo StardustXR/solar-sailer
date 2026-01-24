@@ -5,13 +5,7 @@ use std::{
 
 use glam::Quat;
 use stardust_xr_fusion::{
-	core::schemas::zbus::{names::WellKnownName, Connection},
-	drawable::Model,
-	node::NodeType,
-	objects::{interfaces::SpatialRefProxy, SpatialRefProxyExt as _},
-	spatial::Transform,
-	values::ResourceID,
-	ClientHandle,
+	ClientHandle, drawable::Model, node::NodeType, objects::{SpatialRefProxyExt as _, interfaces::SpatialRefProxy}, spatial::Transform, values::ResourceID, zbus::{Connection, names::WellKnownName}
 };
 use stardust_xr_molecules::{
 	button::{Button, ButtonSettings},
@@ -43,7 +37,7 @@ impl ModeButton {
 		}
 		self.button.released()
 	}
-	pub async fn new(client: &Arc<ClientHandle>, location: ButtonLocation) -> Option<Self> {
+	pub async fn new(client: &Arc<ClientHandle>, location: ButtonLocation, connection: &Connection) -> Option<Self> {
 		let (dest, spatial_path, tracked_path) = match location {
 			ButtonLocation::Hand => (
 				"org.stardustxr.Hands",
@@ -57,7 +51,7 @@ impl ModeButton {
 			),
 		};
 		let spatial = SpatialRefProxy::new(
-			&Connection::session().await.ok()?,
+			connection,
 			WellKnownName::from_static_str(dest).ok()?,
 			spatial_path,
 		)

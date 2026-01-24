@@ -4,20 +4,14 @@ mod monado_movement;
 mod reparentable_movement;
 mod solar_sailer;
 
-use glam::Vec3;
 use input::Input;
-use libmonado::Monado;
-use monado_movement::MonadoMovement;
-use reparentable_movement::ReparentMovement;
 use solar_sailer::{Mode, SolarSailer};
 use stardust_xr_fusion::{
 	client::Client,
-	core::schemas::zbus::{Connection, conn::Builder, fdo::ObjectManager},
 	objects::object_registry::ObjectRegistry,
 	project_local_resources,
-	root::{RootAspect, RootEvent},
+	root::{RootAspect, RootEvent}, zbus::{conn::Builder, fdo::ObjectManager},
 };
-use tracing::error;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {

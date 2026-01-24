@@ -50,7 +50,7 @@ impl ReparentMovement {
 	}
 
 	pub async fn new(client: &Arc<ClientHandle>, obj_reg: Arc<ObjectRegistry>) -> NodeResult<Self> {
-		let spatial = Spatial::create(client.get_root(), Transform::identity(), false)?;
+		let spatial = Spatial::create(client.get_root(), Transform::identity())?;
 		let spatial_id = spatial.export_spatial().await?;
 		Ok(ReparentMovement {
 			spatial,

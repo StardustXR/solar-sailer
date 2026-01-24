@@ -3,7 +3,6 @@ use std::{f32::consts::FRAC_PI_2, sync::Arc};
 use glam::{Mat4, Quat, Vec3, vec3};
 use stardust_xr_fusion::{
 	ClientHandle,
-	core::schemas::zbus::Connection,
 	drawable::{Line, LinePoint, Lines, LinesAspect as _, Model},
 	fields::{CylinderShape, Field, Shape},
 	input::{InputData, InputDataType, InputHandler},
@@ -11,6 +10,7 @@ use stardust_xr_fusion::{
 	objects::hmd,
 	spatial::{Spatial, SpatialAspect as _, SpatialRef, SpatialRefAspect, Transform},
 	values::{ResourceID, color::rgba_linear},
+	zbus::Connection,
 };
 use stardust_xr_molecules::{
 	UIElement,
@@ -19,7 +19,7 @@ use stardust_xr_molecules::{
 	lines::{LineExt as _, circle},
 	reparentable::Reparentable,
 };
-use tracing::{error, info};
+use tracing::error;
 
 use crate::{
 	mode_button::ModeButton,
@@ -125,7 +125,7 @@ impl PenInput {
 		self.button.released()
 	}
 	async fn new(client: &Arc<ClientHandle>, connection: Connection) -> NodeResult<Self> {
-		let pen_root = Spatial::create(client.get_root(), Transform::none(), true)?;
+		let pen_root = Spatial::create(client.get_root(), Transform::none())?;
 		let signifiers = Lines::create(&pen_root, Transform::none(), &[])?;
 		let field = Field::create(
 			&pen_root,
